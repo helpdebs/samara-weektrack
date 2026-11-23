@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Samara · Recordings</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,500&family=Poppins:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+:root{--bg:#F2EFE6;--box:#E8E3D2;--card:#FBFAF6;--line:#E3DECE;--ink:#2B2620;--soft:#6E665B;--accent:#B4553F;--accent-soft:#F1DDD5;--ok:#5E7A55;--ok-soft:#DEE7D8}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--ink);font-family:'Poppins',system-ui,sans-serif;font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
+button{font:inherit;cursor:pointer}
+input,textarea,select{font:inherit;color:inherit}
+.wrap{max-width:880px;margin:0 auto;padding:0 22px}
+.hidden{display:none!important}
+
+.demo{background:var(--ink);color:#EEE9DF;font-size:12.5px}
+.demo .wrap{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding-top:8px;padding-bottom:8px}
+.demo .seg button{border:0;background:transparent;color:#BDB5A8;padding:4px 12px;border-radius:99px;font-size:12px}
+.demo .seg button.on{background:var(--bg);color:var(--ink);font-weight:600}
+
+header{padding:46px 0 30px;display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.kicker{font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:var(--accent);font-weight:500}
+h1{font-family:'Lora',serif;font-weight:600;font-size:clamp(30px,6vw,42px);line-height:1.1;margin-top:6px}
+h1 em{font-style:italic;font-weight:500;color:var(--accent)}
+.out{border:0;background:none;color:var(--soft);font-size:13px;text-decoration:underline;text-underline-offset:3px}
+select.prog{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:6px 12px;font-size:13px;margin-right:10px}
+
+.slots{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.slot{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;display:flex;flex-direction:column;gap:14px;min-height:178px}
+.slot.locked{background:transparent;border-style:dashed}
+.slot-h{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.slot-h .n{font-family:'Lora',serif;font-size:22px;font-weight:600}
+.slot-h .n small{font-family:'Poppins';font-size:12px;font-weight:400;color:var(--soft);margin-left:8px}
+.slot.locked .n{color:var(--soft)}
+.tag{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:3px 10px;border-radius:99px;white-space:nowrap}
+.tag.todo{background:var(--accent-soft);color:var(--accent)}
+.tag.done{background:var(--ok-soft);color:var(--ok)}
+.tag.soon{color:var(--soft);border:1px dashed var(--line)}
+.slot .body{margin-top:auto;display:flex;flex-direction:column;gap:10px}
+.slot audio{width:100%;height:40px}
+.meta{font-size:12.5px;color:var(--soft);display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.btn{border:1px solid var(--line);background:var(--card);border-radius:99px;padding:9px 16px;font-size:13.5px;color:var(--ink);display:inline-flex;align-items:center;gap:8px;position:relative;overflow:hidden;text-decoration:none}
+.btn:hover{border-color:var(--accent);color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.primary:hover{opacity:.9;color:#fff}
+.btn.rec-on{background:var(--ink);border-color:var(--ink);color:#fff}
+.btn input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer}
+.btn[disabled]{opacity:.4;pointer-events:none}
+.btn svg{width:11px;height:11px;fill:currentColor}
+.link{border:0;background:none;font-size:12.5px;color:var(--soft);text-decoration:underline;text-underline-offset:3px;padding:0}
+.link:hover{color:var(--accent)}
+.empty{font-size:13.5px;color:var(--soft)}
+.clock{font-family:'Lora',serif;font-size:20px;font-variant-numeric:tabular-nums}
+.fb{background:var(--ok-soft);border-radius:12px;padding:12px 14px;font-size:13.5px;white-space:pre-wrap}
+.fb b{display:block;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--ok);margin-bottom:3px}
+.fb a{color:var(--ok)}
+
+.lessons{margin:34px 0 60px;padding-top:26px;border-top:1px solid var(--line)}
+.lessons .kicker{margin-bottom:12px}
+.lrow{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.lbtn{display:flex;flex-direction:column;align-items:flex-start;gap:2px;padding:16px 18px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--ink);text-decoration:none;transition:border-color .2s, transform .2s}
+.lbtn:hover{border-color:var(--accent);transform:translateY(-2px)}
+.lbtn small{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--accent);font-weight:500}
+.lbtn span{font-family:'Lora',serif;font-size:19px;font-weight:600}
+.lbtn.off{background:transparent;border-style:dashed;color:var(--soft);pointer-events:none}
+.lbtn.off small{color:var(--soft)}
+.lbtn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.lbtn.primary small{color:#F6DED6}
+
+.login{min-height:100vh;display:grid;place-items:center;padding:24px}
+.lcard{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:34px 30px;width:100%;max-width:380px}
+.lcard h1{font-size:30px;margin:6px 0 20px}
+.field{display:grid;gap:5px;margin-bottom:12px}
+.field label{font-size:12.5px;font-weight:500;color:var(--soft)}
+.field input,.field textarea,.field select{border:1px solid var(--line);background:#fff;border-radius:10px;padding:9px 12px;width:100%}
+.field textarea{min-height:120px;resize:vertical}
+.err{color:var(--accent);font-size:13px;min-height:1.3em;margin-bottom:8px}
+
+dialog{border:0;border-radius:18px;padding:24px 26px;width:calc(100% - 28px);max-width:480px;background:var(--card);color:var(--ink)}
+dialog::backdrop{background:rgba(43,38,32,.4)}
+dialog h3{font-family:'Lora',serif;font-size:22px;margin-bottom:14px}
+.toggle{display:flex;gap:8px;align-items:center;font-size:13.5px}
+.toggle input{width:17px;height:17px;accent-color:var(--accent)}
+
+.toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%);background:var(--ink);color:#fff;font-size:13px;padding:9px 18px;border-radius:99px;opacity:0;transition:.25s;pointer-events:none;z-index:9;max-width:calc(100% - 40px);text-align:center}
+.toast.show{opacity:1}
+.loading{min-height:70vh;display:grid;place-items:center;color:var(--soft);font-family:'Lora',serif;font-style:italic}
+
+@media (max-width:640px){
+  .slots{grid-template-columns:1fr}
+  .lrow{grid-template-columns:1fr 1fr}
+  header{padding-top:32px}
+}
+</style>
+</head>
+<body>
+<div id="app"><div class="loading">Loading…</div></div>
+<dialog id="modal"></dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+/* =====================================================================
+   SETTINGS · Supabase > Project Settings > API
+   While these placeholders stay here, the page runs in preview mode.
+   ===================================================================== */
+const CONFIG = {
+  SUPABASE_URL: 'YOUR_SUPABASE_URL',
+  SUPABASE_ANON_KEY: 'YOUR_SUPABASE_ANON_KEY',
+  BUCKET: 'recordings'
+};
+const DEMO = !CONFIG.SUPABASE_URL || CONFIG.SUPABASE_URL.startsWith('YOUR_');
+
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const linkify = s => esc(s).replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+const fmtDur = s => { s = Math.round(Number(s) || 0); return Math.floor(s/60) + ':' + String(s%60).padStart(2,'0'); };
+const fmtDay = d => new Date(d).toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+const ICON = { rec:'<svg viewBox="0 0 10 10"><circle cx="5" cy="5" r="4.2"/></svg>', stop:'<svg viewBox="0 0 10 10"><rect x="1.2" y="1.2" width="7.6" height="7.6" rx="1"/></svg>', up:'<svg viewBox="0 0 10 10"><path d="M5 1 9 5H6.2v4H3.8V5H1z"/></svg>' };
+function toast(m){ const t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), 2800); }
+function extFor(mime, name){
+  if (name && name.includes('.')) return name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g,'') || 'audio';
+  mime = mime || '';
+  if (mime.includes('webm')) return 'webm';
+  if (mime.includes('mp4') || mime.includes('aac')) return 'm4a';
+  if (mime.includes('ogg')) return 'ogg';
+  if (mime.includes('mpeg')) return 'mp3';
+  if (mime.includes('wav')) return 'wav';
+  return 'audio';
+}
+function fileDuration(file){
+  return new Promise(res => {
+    const a = new Audio(), u = URL.createObjectURL(file);
+    a.preload = 'metadata';
+    a.onloadedmetadata = () => { URL.revokeObjectURL(u); res(isFinite(a.duration) ? a.duration : null); };
+    a.onerror = () => { URL.revokeObjectURL(u); res(null); };
+    a.src = u;
+  });
+}
+
+/* ---------------- Supabase ---------------- */
+let sb = null; const urls = new Map();
+const Real = {
+  init(){ sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); },
+  async session(){ return (await sb.auth.getSession()).data.session; },
+  async signIn(e, p){ const { error } = await sb.auth.signInWithPassword({ email:e, password:p }); if (error) throw error; },
+  async signOut(){ await sb.auth.signOut(); },
+  async reset(e){ const { error } = await sb.auth.resetPasswordForEmail(e, { redirectTo: location.href.split('#')[0] }); if (error) throw error; },
+  async newPassword(p){ const { error } = await sb.auth.updateUser({ password:p }); if (error) throw error; },
+  async isAdmin(){ const { data } = await sb.rpc('rec_is_admin'); return !!data; },
+  async programs(){
+    const { data, error } = await sb.from('rec_programs').select('*').order('created_at', { ascending:false });
+    if (error) throw error; return data || [];
+  },
+  async load(pid){
+    const { data: weeks, error } = await sb.from('rec_weeks').select('*').eq('program_id', pid).order('week_number');
+    if (error) throw error;
+    const ids = weeks.map(w => w.id); let subs = [], fbs = [];
+    if (ids.length){
+      const [a, b] = await Promise.all([
+        sb.from('rec_submissions').select('*').in('week_id', ids).order('created_at', { ascending:false }),
+        sb.from('rec_feedback').select('*').in('week_id', ids)
+      ]);
+      if (a.error) throw a.error; if (b.error) throw b.error;
+      subs = a.data || []; fbs = b.data || [];
+    }
+    return { weeks, subs, fbs };
+  },
+  async url(path){
+    const c = urls.get(path); if (c && c.exp > Date.now()) return c.u;
+    const { data, error } = await sb.storage.from(CONFIG.BUCKET).createSignedUrl(path, 3600);
+    if (error) throw error; urls.set(path, { u:data.signedUrl, exp:Date.now() + 50*60*1000 }); return data.signedUrl;
+  },
+  async addRecording(week, studentId, blob, mime, name, duration, old){
+    const path = `${studentId}/${week.id}/${Date.now()}.${extFor(mime, name)}`;
+    const up = await sb.storage.from(CONFIG.BUCKET).upload(path, blob, { contentType: mime || blob.type || 'audio/webm' });
+    if (up.error) throw up.error;
+    const ins = await sb.from('rec_submissions').insert({ week_id:week.id, student_id:studentId, storage_path:path, mime_type:mime || null, duration_seconds: duration ? Number(duration.toFixed(2)) : null });
+    if (ins.error){ await sb.storage.from(CONFIG.BUCKET).remove([path]); throw ins.error; }
+    for (const s of old){ await sb.from('rec_submissions').delete().eq('id', s.id); await sb.storage.from(CONFIG.BUCKET).remove([s.storage_path]); }
+  },
+  async saveWeek(id, patch){ const { error } = await sb.from('rec_weeks').update(patch).eq('id', id); if (error) throw error; },
+  async saveFeedback(weekId, patch){ const { error } = await sb.from('rec_feedback').upsert({ week_id:weekId, ...patch }); if (error) throw error; }
+};
+
+/* ---------------- Preview mode ---------------- */
+let demoRole = 'student';
+const D = {
+  programs:[{ id:'p1', student_id:'s1', student_name:'Samara', period_label:'Month 1' }],
+  weeks:[
+    { id:'w1', program_id:'p1', week_number:1, status:'open', title:'Ear Check', lesson_url:'ear-check-samara.html' },
+    { id:'w2', program_id:'p1', week_number:2, status:'locked', title:null, lesson_url:null },
+    { id:'w3', program_id:'p1', week_number:3, status:'locked', title:null, lesson_url:null },
+    { id:'w4', program_id:'p1', week_number:4, status:'locked', title:null, lesson_url:null }
+  ], subs:[], fbs:{}, files:new Map()
+};
+const Demo = {
+  init(){}, async session(){ return { user:{ id: demoRole === 'teacher' ? 't1' : 's1' } }; },
+  async signIn(){}, async signOut(){ toast('Preview mode'); }, async reset(){}, async newPassword(){},
+  async isAdmin(){ return demoRole === 'teacher'; },
+  async programs(){ return D.programs; },
+  async load(){ const admin = demoRole === 'teacher';
+    return { weeks:D.weeks.map(w => ({...w})), subs:[...D.subs].sort((a,b) => b.created_at.localeCompare(a.created_at)),
+             fbs:Object.values(D.fbs).filter(f => admin || f.published) }; },
+  async url(p){ return D.files.get(p) || ''; },
+  async addRecording(week, studentId, blob, mime, name, duration, old){
+    const path = `${studentId}/${week.id}/${Date.now()}.${extFor(mime, name)}`;
+    D.files.set(path, URL.createObjectURL(blob));
+    D.subs.push({ id:String(Math.random()), week_id:week.id, student_id:studentId, storage_path:path, duration_seconds:duration, created_at:new Date().toISOString() });
+    D.subs = D.subs.filter(s => !old.some(o => o.id === s.id));
+  },
+  async saveWeek(id, patch){ Object.assign(D.weeks.find(w => w.id === id), patch); },
+  async saveFeedback(weekId, patch){ D.fbs[weekId] = { week_id:weekId, ...patch }; }
+};
+const api = DEMO ? Demo : Real;
+
+/* ---------------- State ---------------- */
+const S = { admin:false, programs:[], pid:null, weeks:[], subs:[], fbs:{}, recovery:false };
+const R = { week:null, mr:null, stream:null, chunks:[], start:0, tick:null, mime:'' };
+const program = () => S.programs.find(p => p.id === S.pid);
+
+async function boot(){
+  try {
+    api.init();
+    if (!DEMO) sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY'){ S.recovery = true; login(); } });
+    if (!(await api.session())) return login();
+    await enter();
+  } catch(e){ console.error(e); $('#app').innerHTML = '<div class="loading">Something went wrong. Please refresh the page.</div>'; }
+}
+async function enter(){
+  S.admin = await api.isAdmin();
+  S.programs = await api.programs();
+  if (!S.programs.length){ $('#app').innerHTML = demoBar() + '<div class="loading">Your recordings will appear here soon.</div>'; return; }
+  let saved = null; try { saved = localStorage.getItem('rc-pid'); } catch(e){}
+  S.pid = S.programs.some(p => p.id === saved) ? saved : S.programs[0].id;
+  await reload();
+}
+async function reload(){
+  const d = await api.load(S.pid);
+  S.weeks = d.weeks; S.subs = d.subs; S.fbs = {}; d.fbs.forEach(f => S.fbs[f.week_id] = f);
+  render();
+}
+
+/* ---------------- Login ---------------- */
+function login(){
+  const r = S.recovery;
+  $('#app').innerHTML = `<div class="login"><form class="lcard" id="lf">
+    <div class="kicker">Teacher Débora</div><h1>${r ? 'New password' : 'Your <em>recordings</em>'}</h1>
+    ${r ? `<div class="field"><label>New password</label><input id="np" type="password" minlength="6" required></div>`
+        : `<div class="field"><label>Email</label><input id="em" type="email" required autocomplete="email"></div>
+           <div class="field"><label>Password</label><input id="pw" type="password" required autocomplete="current-password"></div>`}
+    <div class="err" id="err"></div>
+    <div class="row" style="justify-content:space-between"><button class="btn primary" type="submit">${r ? 'Save' : 'Sign in'}</button>
+    ${r ? '' : '<button class="link" type="button" id="fg">Forgot password?</button>'}</div>
+  </form></div>`;
+  $('#lf').onsubmit = async e => {
+    e.preventDefault(); $('#err').textContent = '';
+    try { if (r){ await api.newPassword($('#np').value); S.recovery = false; } else await api.signIn($('#em').value.trim(), $('#pw').value); await enter(); }
+    catch(x){ $('#err').textContent = x.message || 'Could not sign in.'; }
+  };
+  const fg = $('#fg'); if (fg) fg.onclick = async () => {
+    const em = $('#em').value.trim(); if (!em){ $('#err').textContent = 'Type your email first.'; return; }
+    try { await api.reset(em); toast('Check your inbox for the reset link'); } catch(x){ $('#err').textContent = x.message; }
+  };
+}
+
+/* ---------------- Render ---------------- */
+function demoBar(){
+  if (!DEMO) return '';
+  return `<div class="demo"><div class="wrap"><span>Preview · nothing is saved</span>
+    <span class="seg"><button data-act="role" data-r="student" class="${demoRole==='student'?'on':''}">Student</button><button data-act="role" data-r="teacher" class="${demoRole==='teacher'?'on':''}">Teacher</button></span></div></div>`;
+}
+function render(){
+  const p = program();
+  const sel = S.admin && S.programs.length > 1 ? `<select class="prog" id="prog">${S.programs.map(x => `<option value="${x.id}" ${x.id===S.pid?'selected':''}>${esc(x.student_name)} · ${esc(x.period_label||'')}</option>`).join('')}</select>` : '';
+  const slots = [1,2,3,4].map(n => slotHTML(n, S.weeks.find(w => w.week_number === n))).join('');
+  const lessons = [1,2,3,4].map(n => {
+    const w = S.weeks.find(x => x.week_number === n);
+    const on = w && w.status !== 'locked' && w.lesson_url;
+    return on ? `<a class="lbtn ${n===currentWeek()?'primary':''}" href="${esc(w.lesson_url)}" target="_blank" rel="noopener"><small>Lesson ${n}</small><span>${esc(w.title || 'Open')}</span></a>`
+              : `<div class="lbtn off"><small>Lesson ${n}</small><span>Soon</span></div>`;
+  }).join('');
+  $('#app').innerHTML = `${demoBar()}<div class="wrap">
+    <header><div><div class="kicker">${esc(p.student_name)} · ${esc(p.period_label || '')}</div><h1>Your <em>recordings</em></h1></div>
+      <div class="row">${sel}<button class="out" data-act="out">Sign out</button></div></header>
+    <section class="slots">${slots}</section>
+    <section class="lessons"><div class="kicker">Lessons</div><div class="lrow">${lessons}</div></section>
+  </div>`;
+  const ps = $('#prog'); if (ps) ps.onchange = async () => { S.pid = ps.value; try { localStorage.setItem('rc-pid', ps.value); } catch(e){} await reload(); };
+  document.querySelectorAll('audio[data-path]').forEach(a => api.url(a.dataset.path).then(u => { if (u) a.src = u; }).catch(() => {}));
+}
+function currentWeek(){ const open = S.weeks.filter(w => w.status === 'open'); return open.length ? open[open.length-1].week_number : 0; }
+
+function slotHTML(n, w){
+  const visible = w && (w.status !== 'locked' || S.admin);
+  const edit = S.admin && w ? `<button class="link" data-act="edit" data-n="${n}">Edit</button>` : '';
+  if (!visible) return `<div class="slot locked"><div class="slot-h"><span class="n">Week ${n}</span><span class="tag soon">After class</span></div><div class="body"><div class="empty">Opens after our week ${n} class.</div></div></div>`;
+  const sub = S.subs.find(s => s.week_id === w.id);
+  const fb = S.fbs[w.id];
+  const canRec = w.status === 'open' || S.admin;
+  const recording = R.week === n;
+  const tag = w.status === 'locked' ? '<span class="tag soon">Hidden</span>' : sub ? '<span class="tag done">Sent</span>' : w.status === 'open' ? '<span class="tag todo">To record</span>' : '<span class="tag soon">Closed</span>';
+  let body = '';
+  if (sub) body += `<audio controls preload="none" data-path="${esc(sub.storage_path)}"></audio>
+    <div class="meta"><span>Sent ${fmtDay(sub.created_at)}${sub.duration_seconds ? ' · ' + fmtDur(sub.duration_seconds) : ''}</span></div>`;
+  if (canRec){
+    if (recording) body += `<div class="row"><button class="btn rec-on" data-act="stop" data-n="${n}">${ICON.stop} Stop</button><span class="clock" id="clock">0:00</span></div>`;
+    else body += `<div class="row">
+      <button class="btn ${sub ? '' : 'primary'}" data-act="rec" data-n="${n}">${ICON.rec} ${sub ? 'Record again' : 'Record'}</button>
+      <span class="btn">${ICON.up} ${sub ? 'Replace file' : 'Upload'}<input type="file" accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.aac,.opus" data-n="${n}"></span></div>`;
+  } else if (!sub) body += `<div class="empty">No recording this week.</div>`;
+  if (fb && fb.published && fb.body) body += `<div class="fb"><b>Feedback</b>${linkify(fb.body)}</div>`;
+  if (S.admin && fb && !fb.published && fb.body) body += `<div class="meta"><span>Feedback saved as draft</span></div>`;
+  return `<div class="slot"><div class="slot-h"><span class="n">Week ${n}${w.title ? `<small>${esc(w.title)}</small>` : ''}</span><span class="row">${edit}${tag}</span></div><div class="body">${body}</div></div>`;
+}
+
+/* ---------------- Recording / upload ---------------- */
+function pickMime(){ const o = ['audio/webm;codecs=opus','audio/webm','audio/mp4','audio/ogg;codecs=opus']; return window.MediaRecorder ? (o.find(m => MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(m)) || '') : ''; }
+async function startRec(n){
+  if (R.week){ toast('Stop the current recording first'); return; }
+  if (!navigator.mediaDevices || !window.MediaRecorder){ toast('This browser can’t record here. Use Upload.'); return; }
+  try { R.stream = await navigator.mediaDevices.getUserMedia({ audio:true }); }
+  catch(e){ toast('Microphone blocked. Allow it in the browser and try again.'); return; }
+  const m = pickMime(); R.mr = new MediaRecorder(R.stream, m ? { mimeType:m } : undefined); R.mime = R.mr.mimeType || m || 'audio/webm';
+  R.chunks = []; R.mr.ondataavailable = e => { if (e.data.size) R.chunks.push(e.data); };
+  R.mr.onstop = async () => {
+    const dur = (Date.now() - R.start) / 1000; const blob = new Blob(R.chunks, { type:R.mime });
+    R.stream.getTracks().forEach(t => t.stop()); clearInterval(R.tick); R.week = null;
+    await save(n, blob, R.mime, null, dur);
+  };
+  R.mr.start(250); R.week = n; R.start = Date.now(); render();
+  R.tick = setInterval(() => { const c = $('#clock'); if (c) c.textContent = fmtDur((Date.now() - R.start)/1000); }, 250);
+}
+async function save(n, blob, mime, name, dur){
+  const w = S.weeks.find(x => x.week_number === n);
+  const old = S.subs.filter(s => s.week_id === w.id);
+  toast('Sending…');
+  try { await api.addRecording(w, program().student_id, blob, mime, name, dur, old); toast('Recording saved'); }
+  catch(e){ console.error(e); toast(e.message || 'Could not save. Try again.'); }
+  await reload();
+}
+
+/* ---------------- Teacher edit ---------------- */
+function edit(n){
+  const w = S.weeks.find(x => x.week_number === n); const fb = S.fbs[w.id] || {};
+  const m = $('#modal');
+  m.innerHTML = `<h3>Week ${n}</h3>
+    <div class="field"><label>Status</label><select id="e_st">
+      <option value="locked" ${w.status==='locked'?'selected':''}>Locked (Samara sees “after class”)</option>
+      <option value="open" ${w.status==='open'?'selected':''}>Open (she can record)</option>
+      <option value="closed" ${w.status==='closed'?'selected':''}>Closed (listen only)</option></select></div>
+    <div class="field"><label>Lesson title</label><input id="e_t" value="${esc(w.title || '')}"></div>
+    <div class="field"><label>Lesson link</label><input id="e_u" value="${esc(w.lesson_url || '')}" placeholder="ear-check-samara.html or https://…"></div>
+    <div class="field"><label>Feedback (links become clickable)</label><textarea id="e_f">${esc(fb.body || '')}</textarea></div>
+    <label class="toggle" style="margin-bottom:18px"><input type="checkbox" id="e_p" ${fb.published?'checked':''}> Show feedback to Samara</label>
+    <div class="row" style="justify-content:flex-end"><button class="btn" data-act="close">Cancel</button><button class="btn primary" id="e_s">Save</button></div>`;
+  m.showModal();
+  $('#e_s').onclick = async () => {
+    try {
+      await api.saveWeek(w.id, { status:$('#e_st').value, title:$('#e_t').value.trim() || null, lesson_url:$('#e_u').value.trim() || null });
+      const body = $('#e_f').value.trim();
+      if (body || fb.body) await api.saveFeedback(w.id, { body: body || null, published: $('#e_p').checked });
+      m.close(); toast('Saved'); await reload();
+    } catch(e){ toast(e.message || 'Could not save'); }
+  };
+}
+
+/* ---------------- Events ---------------- */
+document.addEventListener('click', async e => {
+  const b = e.target.closest('[data-act]'); if (!b) return;
+  const n = Number(b.dataset.n);
+  switch (b.dataset.act){
+    case 'rec': startRec(n); break;
+    case 'stop': if (R.mr && R.mr.state === 'recording') R.mr.stop(); break;
+    case 'edit': edit(n); break;
+    case 'close': $('#modal').close(); break;
+    case 'out': if (DEMO) return toast('Preview mode'); await api.signOut(); login(); break;
+    case 'role': demoRole = b.dataset.r; await enter(); break;
+  }
+});
+document.addEventListener('change', async e => {
+  const f = e.target; if (f.type !== 'file' || !f.files[0]) return;
+  const file = f.files[0];
+  if (file.size > 50*1024*1024){ toast('File over 50 MB. Try a shorter one.'); return; }
+  await save(Number(f.dataset.n), file, file.type, file.name, await fileDuration(file));
+});
+
+boot();
+</script>
+</body>
+</html>
