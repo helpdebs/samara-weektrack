@@ -106,7 +106,10 @@ dialog h3{font-family:'Lora',serif;font-size:22px;margin-bottom:14px}
 <script>
 /* =====================================================================
    SETTINGS · Supabase > Project Settings > API
-   While these placeholders stay here, the page runs in preview mode.
+   (Project URL + anon/public key). While these placeholders stay here,
+   the page runs in preview mode.
+   Student link:  this-page.html?c=STUDENT_CODE
+   Teacher link:  this-page.html?t=TEACHER_CODE
    ===================================================================== */
 const CONFIG = {
   SUPABASE_URL: 'https://pgdanuifukzisyyummpz.supabase.co',
@@ -114,6 +117,8 @@ const CONFIG = {
   BUCKET: 'recordings'
 };
 const DEMO = !CONFIG.SUPABASE_URL || CONFIG.SUPABASE_URL.startsWith('YOUR_');
+const Q = new URLSearchParams(location.search);
+const CODE = Q.get('c'), TCODE = Q.get('t');
 
 const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -143,129 +148,85 @@ function fileDuration(file){
 }
 
 /* ---------------- Supabase ---------------- */
-let sb = null; const urls = new Map();
+let sb = null;
+async function rpc(fn, args){ const { data, error } = await sb.rpc(fn, args); if (error) throw error; return data; }
 const Real = {
-  init(){ sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY); },
-  async session(){ return (await sb.auth.getSession()).data.session; },
-  async signIn(e, p){ const { error } = await sb.auth.signInWithPassword({ email:e, password:p }); if (error) throw error; },
-  async signOut(){ await sb.auth.signOut(); },
-  async reset(e){ const { error } = await sb.auth.resetPasswordForEmail(e, { redirectTo: location.href.split('#')[0] }); if (error) throw error; },
-  async newPassword(p){ const { error } = await sb.auth.updateUser({ password:p }); if (error) throw error; },
-  async isAdmin(){ const { data } = await sb.rpc('rec_is_admin'); return !!data; },
+  init(){ sb = supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_ANON_KEY, { auth:{ persistSession:false } }); },
+  async isTeacher(){ return !!TCODE; },
   async programs(){
-    const { data, error } = await sb.from('rec_programs').select('*').order('created_at', { ascending:false });
-    if (error) throw error; return data || [];
+    if (TCODE) return await rpc('rec_teacher_programs', { p_tcode:TCODE }) || [];
+    const v = await rpc('rec_student_view', { p_code:CODE });
+    return v ? [v.program] : [];
   },
-  async load(pid){
-    const { data: weeks, error } = await sb.from('rec_weeks').select('*').eq('program_id', pid).order('week_number');
-    if (error) throw error;
-    const ids = weeks.map(w => w.id); let subs = [], fbs = [];
-    if (ids.length){
-      const [a, b] = await Promise.all([
-        sb.from('rec_submissions').select('*').in('week_id', ids).order('created_at', { ascending:false }),
-        sb.from('rec_feedback').select('*').in('week_id', ids)
-      ]);
-      if (a.error) throw a.error; if (b.error) throw b.error;
-      subs = a.data || []; fbs = b.data || [];
-    }
-    return { weeks, subs, fbs };
+  async load(p){
+    return TCODE ? await rpc('rec_teacher_view', { p_tcode:TCODE, p_program:p.id })
+                 : await rpc('rec_student_view', { p_code:p.code });
   },
-  async url(path){
-    const c = urls.get(path); if (c && c.exp > Date.now()) return c.u;
-    const { data, error } = await sb.storage.from(CONFIG.BUCKET).createSignedUrl(path, 3600);
-    if (error) throw error; urls.set(path, { u:data.signedUrl, exp:Date.now() + 50*60*1000 }); return data.signedUrl;
-  },
-  async addRecording(week, studentId, blob, mime, name, duration, old){
-    const path = `${studentId}/${week.id}/${Date.now()}.${extFor(mime, name)}`;
+  url(path){ return sb.storage.from(CONFIG.BUCKET).getPublicUrl(path).data.publicUrl; },
+  async addRecording(p, week, blob, mime, name, duration){
+    const path = `${p.code}/${week.week_number}/${Date.now()}.${extFor(mime, name)}`;
     const up = await sb.storage.from(CONFIG.BUCKET).upload(path, blob, { contentType: mime || blob.type || 'audio/webm' });
     if (up.error) throw up.error;
-    const ins = await sb.from('rec_submissions').insert({ week_id:week.id, student_id:studentId, storage_path:path, mime_type:mime || null, duration_seconds: duration ? Number(duration.toFixed(2)) : null });
-    if (ins.error){ await sb.storage.from(CONFIG.BUCKET).remove([path]); throw ins.error; }
-    for (const s of old){ await sb.from('rec_submissions').delete().eq('id', s.id); await sb.storage.from(CONFIG.BUCKET).remove([s.storage_path]); }
+    await rpc('rec_add_recording', { p_code:p.code, p_week:week.week_number, p_path:path, p_mime:mime || null, p_duration: duration ? Number(duration.toFixed(2)) : null });
   },
-  async saveWeek(id, patch){ const { error } = await sb.from('rec_weeks').update(patch).eq('id', id); if (error) throw error; },
-  async saveFeedback(weekId, patch){ const { error } = await sb.from('rec_feedback').upsert({ week_id:weekId, ...patch }); if (error) throw error; }
+  async saveWeek(w, patch){ await rpc('rec_teacher_save_week', { p_tcode:TCODE, p_week:w.id, p_status:patch.status, p_title:patch.title, p_lesson_url:patch.lesson_url }); },
+  async saveFeedback(w, body, published){ await rpc('rec_teacher_save_feedback', { p_tcode:TCODE, p_week:w.id, p_body:body, p_published:published }); }
 };
 
 /* ---------------- Preview mode ---------------- */
 let demoRole = 'student';
 const D = {
-  programs:[{ id:'p1', student_id:'s1', student_name:'Samara', period_label:'Month 1' }],
+  program:{ id:'p1', code:'demo-code', student_name:'Samara', period_label:'Month 1' },
   weeks:[
-    { id:'w1', program_id:'p1', week_number:1, status:'open', title:'Ear Check', lesson_url:'ear-check-samara.html' },
-    { id:'w2', program_id:'p1', week_number:2, status:'locked', title:null, lesson_url:null },
-    { id:'w3', program_id:'p1', week_number:3, status:'locked', title:null, lesson_url:null },
-    { id:'w4', program_id:'p1', week_number:4, status:'locked', title:null, lesson_url:null }
+    { id:'w1', week_number:1, status:'open', title:'Ear Check', lesson_url:'ear-check-samara.html' },
+    { id:'w2', week_number:2, status:'locked', title:null, lesson_url:null },
+    { id:'w3', week_number:3, status:'locked', title:null, lesson_url:null },
+    { id:'w4', week_number:4, status:'locked', title:null, lesson_url:null }
   ], subs:[], fbs:{}, files:new Map()
 };
 const Demo = {
-  init(){}, async session(){ return { user:{ id: demoRole === 'teacher' ? 't1' : 's1' } }; },
-  async signIn(){}, async signOut(){ toast('Preview mode'); }, async reset(){}, async newPassword(){},
-  async isAdmin(){ return demoRole === 'teacher'; },
-  async programs(){ return D.programs; },
-  async load(){ const admin = demoRole === 'teacher';
-    return { weeks:D.weeks.map(w => ({...w})), subs:[...D.subs].sort((a,b) => b.created_at.localeCompare(a.created_at)),
-             fbs:Object.values(D.fbs).filter(f => admin || f.published) }; },
-  async url(p){ return D.files.get(p) || ''; },
-  async addRecording(week, studentId, blob, mime, name, duration, old){
-    const path = `${studentId}/${week.id}/${Date.now()}.${extFor(mime, name)}`;
+  init(){}, async isTeacher(){ return demoRole === 'teacher'; },
+  async programs(){ return [D.program]; },
+  async load(){ const t = demoRole === 'teacher';
+    return { program:D.program, weeks:D.weeks.map(w => (t || w.status !== 'locked') ? {...w} : {...w, title:null, lesson_url:null}),
+             subs:[...D.subs], fbs:Object.values(D.fbs).filter(f => t || f.published) }; },
+  url(p){ return D.files.get(p) || ''; },
+  async addRecording(p, week, blob, mime, name, duration){
+    const path = `${p.code}/${week.week_number}/${Date.now()}.${extFor(mime, name)}`;
     D.files.set(path, URL.createObjectURL(blob));
-    D.subs.push({ id:String(Math.random()), week_id:week.id, student_id:studentId, storage_path:path, duration_seconds:duration, created_at:new Date().toISOString() });
-    D.subs = D.subs.filter(s => !old.some(o => o.id === s.id));
+    D.subs = D.subs.filter(s => s.week_id !== week.id);
+    D.subs.unshift({ id:String(Math.random()), week_id:week.id, storage_path:path, duration_seconds:duration, created_at:new Date().toISOString() });
   },
-  async saveWeek(id, patch){ Object.assign(D.weeks.find(w => w.id === id), patch); },
-  async saveFeedback(weekId, patch){ D.fbs[weekId] = { week_id:weekId, ...patch }; }
+  async saveWeek(w, patch){ Object.assign(D.weeks.find(x => x.id === w.id), patch); },
+  async saveFeedback(w, body, published){ D.fbs[w.id] = { week_id:w.id, body, published }; }
 };
 const api = DEMO ? Demo : Real;
 
 /* ---------------- State ---------------- */
-const S = { admin:false, programs:[], pid:null, weeks:[], subs:[], fbs:{}, recovery:false };
+const S = { teacher:false, programs:[], pid:null, weeks:[], subs:[], fbs:{} };
 const R = { week:null, mr:null, stream:null, chunks:[], start:0, tick:null, mime:'' };
 const program = () => S.programs.find(p => p.id === S.pid);
 
+function message(t){ $('#app').innerHTML = demoBar() + `<div class="loading">${t}</div>`; }
 async function boot(){
   try {
     api.init();
-    if (!DEMO) sb.auth.onAuthStateChange(ev => { if (ev === 'PASSWORD_RECOVERY'){ S.recovery = true; login(); } });
-    if (!(await api.session())) return login();
+    if (!DEMO && !CODE && !TCODE) return message('Open this page with the link your teacher sent you.');
     await enter();
-  } catch(e){ console.error(e); $('#app').innerHTML = '<div class="loading">Something went wrong. Please refresh the page.</div>'; }
+  } catch(e){ console.error(e); message(TCODE ? 'This teacher link is not valid.' : 'Something went wrong. Please refresh the page.'); }
 }
 async function enter(){
-  S.admin = await api.isAdmin();
+  S.teacher = await api.isTeacher();
   S.programs = await api.programs();
-  if (!S.programs.length){ $('#app').innerHTML = demoBar() + '<div class="loading">Your recordings will appear here soon.</div>'; return; }
+  if (!S.programs.length) return message('This link is not valid. Please ask your teacher for a new one.');
   let saved = null; try { saved = localStorage.getItem('rc-pid'); } catch(e){}
   S.pid = S.programs.some(p => p.id === saved) ? saved : S.programs[0].id;
   await reload();
 }
 async function reload(){
-  const d = await api.load(S.pid);
-  S.weeks = d.weeks; S.subs = d.subs; S.fbs = {}; d.fbs.forEach(f => S.fbs[f.week_id] = f);
+  const d = await api.load(program());
+  S.weeks = d.weeks || []; S.subs = d.subs || []; S.fbs = {}; (d.fbs || []).forEach(f => S.fbs[f.week_id] = f);
   render();
-}
-
-/* ---------------- Login ---------------- */
-function login(){
-  const r = S.recovery;
-  $('#app').innerHTML = `<div class="login"><form class="lcard" id="lf">
-    <div class="kicker">Teacher Débora</div><h1>${r ? 'New password' : 'Your <em>recordings</em>'}</h1>
-    ${r ? `<div class="field"><label>New password</label><input id="np" type="password" minlength="6" required></div>`
-        : `<div class="field"><label>Email</label><input id="em" type="email" required autocomplete="email"></div>
-           <div class="field"><label>Password</label><input id="pw" type="password" required autocomplete="current-password"></div>`}
-    <div class="err" id="err"></div>
-    <div class="row" style="justify-content:space-between"><button class="btn primary" type="submit">${r ? 'Save' : 'Sign in'}</button>
-    ${r ? '' : '<button class="link" type="button" id="fg">Forgot password?</button>'}</div>
-  </form></div>`;
-  $('#lf').onsubmit = async e => {
-    e.preventDefault(); $('#err').textContent = '';
-    try { if (r){ await api.newPassword($('#np').value); S.recovery = false; } else await api.signIn($('#em').value.trim(), $('#pw').value); await enter(); }
-    catch(x){ $('#err').textContent = x.message || 'Could not sign in.'; }
-  };
-  const fg = $('#fg'); if (fg) fg.onclick = async () => {
-    const em = $('#em').value.trim(); if (!em){ $('#err').textContent = 'Type your email first.'; return; }
-    try { await api.reset(em); toast('Check your inbox for the reset link'); } catch(x){ $('#err').textContent = x.message; }
-  };
 }
 
 /* ---------------- Render ---------------- */
@@ -274,9 +235,11 @@ function demoBar(){
   return `<div class="demo"><div class="wrap"><span>Preview · nothing is saved</span>
     <span class="seg"><button data-act="role" data-r="student" class="${demoRole==='student'?'on':''}">Student</button><button data-act="role" data-r="teacher" class="${demoRole==='teacher'?'on':''}">Teacher</button></span></div></div>`;
 }
+function studentLink(p){ return location.origin + location.pathname + '?c=' + p.code; }
 function render(){
   const p = program();
-  const sel = S.admin && S.programs.length > 1 ? `<select class="prog" id="prog">${S.programs.map(x => `<option value="${x.id}" ${x.id===S.pid?'selected':''}>${esc(x.student_name)} · ${esc(x.period_label||'')}</option>`).join('')}</select>` : '';
+  const sel = S.teacher && S.programs.length > 1 ? `<select class="prog" id="prog">${S.programs.map(x => `<option value="${x.id}" ${x.id===S.pid?'selected':''}>${esc(x.student_name)} · ${esc(x.period_label||'')}</option>`).join('')}</select>` : '';
+  const copy = S.teacher ? `<button class="btn" data-act="copy">Copy ${esc(p.student_name)}’s link</button>` : '';
   const slots = [1,2,3,4].map(n => slotHTML(n, S.weeks.find(w => w.week_number === n))).join('');
   const lessons = [1,2,3,4].map(n => {
     const w = S.weeks.find(x => x.week_number === n);
@@ -286,22 +249,22 @@ function render(){
   }).join('');
   $('#app').innerHTML = `${demoBar()}<div class="wrap">
     <header><div><div class="kicker">${esc(p.student_name)} · ${esc(p.period_label || '')}</div><h1>Your <em>recordings</em></h1></div>
-      <div class="row">${sel}<button class="out" data-act="out">Sign out</button></div></header>
+      <div class="row">${sel}${copy}</div></header>
     <section class="slots">${slots}</section>
     <section class="lessons"><div class="kicker">Lessons</div><div class="lrow">${lessons}</div></section>
   </div>`;
   const ps = $('#prog'); if (ps) ps.onchange = async () => { S.pid = ps.value; try { localStorage.setItem('rc-pid', ps.value); } catch(e){} await reload(); };
-  document.querySelectorAll('audio[data-path]').forEach(a => api.url(a.dataset.path).then(u => { if (u) a.src = u; }).catch(() => {}));
+  document.querySelectorAll('audio[data-path]').forEach(a => { const u = api.url(a.dataset.path); if (u) a.src = u; });
 }
 function currentWeek(){ const open = S.weeks.filter(w => w.status === 'open'); return open.length ? open[open.length-1].week_number : 0; }
 
 function slotHTML(n, w){
-  const visible = w && (w.status !== 'locked' || S.admin);
-  const edit = S.admin && w ? `<button class="link" data-act="edit" data-n="${n}">Edit</button>` : '';
+  const visible = w && (w.status !== 'locked' || S.teacher);
+  const edit = S.teacher && w ? `<button class="link" data-act="edit" data-n="${n}">Edit</button>` : '';
   if (!visible) return `<div class="slot locked"><div class="slot-h"><span class="n">Week ${n}</span><span class="tag soon">After class</span></div><div class="body"><div class="empty">Opens after our week ${n} class.</div></div></div>`;
   const sub = S.subs.find(s => s.week_id === w.id);
   const fb = S.fbs[w.id];
-  const canRec = w.status === 'open' || S.admin;
+  const canRec = w.status === 'open';
   const recording = R.week === n;
   const tag = w.status === 'locked' ? '<span class="tag soon">Hidden</span>' : sub ? '<span class="tag done">Sent</span>' : w.status === 'open' ? '<span class="tag todo">To record</span>' : '<span class="tag soon">Closed</span>';
   let body = '';
@@ -312,9 +275,9 @@ function slotHTML(n, w){
     else body += `<div class="row">
       <button class="btn ${sub ? '' : 'primary'}" data-act="rec" data-n="${n}">${ICON.rec} ${sub ? 'Record again' : 'Record'}</button>
       <span class="btn">${ICON.up} ${sub ? 'Replace file' : 'Upload'}<input type="file" accept="audio/*,.m4a,.mp3,.wav,.ogg,.webm,.aac,.opus" data-n="${n}"></span></div>`;
-  } else if (!sub) body += `<div class="empty">No recording this week.</div>`;
+  } else if (!sub) body += `<div class="empty">${S.teacher && w.status === 'locked' ? 'Open this week to record.' : 'No recording this week.'}</div>`;
   if (fb && fb.published && fb.body) body += `<div class="fb"><b>Feedback</b>${linkify(fb.body)}</div>`;
-  if (S.admin && fb && !fb.published && fb.body) body += `<div class="meta"><span>Feedback saved as draft</span></div>`;
+  if (S.teacher && fb && !fb.published && fb.body) body += `<div class="meta"><span>Feedback saved as draft</span></div>`;
   return `<div class="slot"><div class="slot-h"><span class="n">Week ${n}${w.title ? `<small>${esc(w.title)}</small>` : ''}</span><span class="row">${edit}${tag}</span></div><div class="body">${body}</div></div>`;
 }
 
@@ -337,9 +300,8 @@ async function startRec(n){
 }
 async function save(n, blob, mime, name, dur){
   const w = S.weeks.find(x => x.week_number === n);
-  const old = S.subs.filter(s => s.week_id === w.id);
   toast('Sending…');
-  try { await api.addRecording(w, program().student_id, blob, mime, name, dur, old); toast('Recording saved'); }
+  try { await api.addRecording(program(), w, blob, mime, name, dur); toast('Recording saved'); }
   catch(e){ console.error(e); toast(e.message || 'Could not save. Try again.'); }
   await reload();
 }
@@ -347,23 +309,24 @@ async function save(n, blob, mime, name, dur){
 /* ---------------- Teacher edit ---------------- */
 function edit(n){
   const w = S.weeks.find(x => x.week_number === n); const fb = S.fbs[w.id] || {};
+  const name = esc(program().student_name);
   const m = $('#modal');
   m.innerHTML = `<h3>Week ${n}</h3>
     <div class="field"><label>Status</label><select id="e_st">
-      <option value="locked" ${w.status==='locked'?'selected':''}>Locked (Samara sees “after class”)</option>
-      <option value="open" ${w.status==='open'?'selected':''}>Open (she can record)</option>
+      <option value="locked" ${w.status==='locked'?'selected':''}>Locked (${name} sees “after class”)</option>
+      <option value="open" ${w.status==='open'?'selected':''}>Open (recording allowed)</option>
       <option value="closed" ${w.status==='closed'?'selected':''}>Closed (listen only)</option></select></div>
     <div class="field"><label>Lesson title</label><input id="e_t" value="${esc(w.title || '')}"></div>
     <div class="field"><label>Lesson link</label><input id="e_u" value="${esc(w.lesson_url || '')}" placeholder="ear-check-samara.html or https://…"></div>
     <div class="field"><label>Feedback (links become clickable)</label><textarea id="e_f">${esc(fb.body || '')}</textarea></div>
-    <label class="toggle" style="margin-bottom:18px"><input type="checkbox" id="e_p" ${fb.published?'checked':''}> Show feedback to Samara</label>
+    <label class="toggle" style="margin-bottom:18px"><input type="checkbox" id="e_p" ${fb.published?'checked':''}> Show feedback to ${name}</label>
     <div class="row" style="justify-content:flex-end"><button class="btn" data-act="close">Cancel</button><button class="btn primary" id="e_s">Save</button></div>`;
   m.showModal();
   $('#e_s').onclick = async () => {
     try {
-      await api.saveWeek(w.id, { status:$('#e_st').value, title:$('#e_t').value.trim() || null, lesson_url:$('#e_u').value.trim() || null });
+      await api.saveWeek(w, { status:$('#e_st').value, title:$('#e_t').value.trim() || null, lesson_url:$('#e_u').value.trim() || null });
       const body = $('#e_f').value.trim();
-      if (body || fb.body) await api.saveFeedback(w.id, { body: body || null, published: $('#e_p').checked });
+      if (body || fb.body) await api.saveFeedback(w, body || null, $('#e_p').checked);
       m.close(); toast('Saved'); await reload();
     } catch(e){ toast(e.message || 'Could not save'); }
   };
@@ -378,7 +341,12 @@ document.addEventListener('click', async e => {
     case 'stop': if (R.mr && R.mr.state === 'recording') R.mr.stop(); break;
     case 'edit': edit(n); break;
     case 'close': $('#modal').close(); break;
-    case 'out': if (DEMO) return toast('Preview mode'); await api.signOut(); login(); break;
+    case 'copy': {
+      const link = studentLink(program());
+      try { await navigator.clipboard.writeText(link); toast('Link copied'); }
+      catch(x){ prompt('Copy this link:', link); }
+      break;
+    }
     case 'role': demoRole = b.dataset.r; await enter(); break;
   }
 });
